@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Task 6 - Fault-Tolerant Monitoring</title>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<style>
+body{font-family:Arial;background:#eef3f8;color:#18304b;margin:0}
+header{background:#123d66;color:white;padding:24px;text-align:center}
+main{max-width:750px;margin:20px auto;padding:12px}
+.card{background:white;border-radius:12px;padding:20px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.metric{background:#f0f5fa;padding:18px;border-radius:9px}
+.value{font-size:28px;font-weight:bold}
+.badge{font-weight:bold;color:#b45309}
+button{padding:10px 14px;border:0;border-radius:7px;background:#1769aa;color:white}
+small{color:#586a7d}
+</style>
+</head>
+<body>
+<header>
+<h1>Advanced Offline Detection</h1>
+<p>Task 6 | Fault-Tolerant Patient Monitoring</p>
+</header>
+<main>
+<div class="card">
+<h2>System Connection</h2>
+<p>Dashboard MQTT: <b id="conn">Connecting...</b></p>
+<p>Device status: <span class="badge" id="state">WAITING FOR DATA</span></p>
+<p>Last update: <b id="last">--</b></p>
+<p>Buffered/synchronized record ID: <b id="record">--</b></p>
+</div>
+<div class="card">
+<h2>Patient Readings</h2>
+<div class="grid">
+<div class="metric">
+Heart Rate
+<div class="value"><span id="hr">--</span> bpm</div>
+</div>
+<div class="metric">
+SpO₂
+<div class="value"><span id="spo2">--</span>%</div>
+</div>
+</div>
+<p id="notice">Waiting for ESP32 data...</p>
+</div>
+<div class="card">
+<h2>Fault-Tolerance Features</h2>
+<p>ONLINE — Wi-Fi and MQTT connected.</p>
+<p>DEGRADED — Wi-Fi connected, MQTT unavailable.</p>
+<p>OFFLINE — Wi-Fi unavailable; readings are buffered locally.</p>
+<p>Recovery — queued readings are published when MQTT reconnects.</p>
+<p><small>The dashboard uses incoming data freshness to detect interruptions. The OLED on the ESP32 displays the actual device network state.</small></p>
+<button onclick="location.reload()">Reconnect Dashboard</button>
+</div>
+</main>
+<script>
+const topic="elevance/harshini/task6/data";
+const conn=document.getElementById("conn");
+const state=document.getElementById("state");
+const notice=document.getElementById("notice");
+let lastMessage=0;
+
+const client=mqtt.connect(
+ "wss://test.mosquitto.org:8081/mqtt",
+ {
+  clientId:"task6_view_"+Math.random().toString(16).slice(2,10),
+  reconnectPeriod:3000,
+  connectTimeout:10000
+ }
+);
+
+client.on("connect",()=>{
+ conn.textContent="Connected";
+ client.subscribe(topic);
+});
+
+client.on("offline",()=>conn.textContent="Offline");
+client.on("error",()=>conn.textContent="Connection error");
+client.on("reconnect",()=>conn.textContent="Reconnecting...");
+
+client.on("message",(t,p)=>{
+ try{
+  const d=JSON.parse(p.toString());
+  document.getElementById("hr").textContent=d.hr;
+  document.getElementById("spo2").textContent=d.spo2;
+  document.getElementById("record").textContent=d.id;
+  document.getElementById("last").textContent=
+   new Date().toLocaleTimeString();
+  lastMessage=Date.now();
+  state.textContent="ONLINE";
+  state.style.color="#16834a";
+  notice.textContent="Live data received from ESP32.";
+ }catch(e){
+  console.error("Invalid data",e);
+ }
+});
+
+setInterval(()=>{
+ if(lastMessage && Date.now()-lastMessage>15000){
+  state.textContent="OFFLINE / DATA STALE";
+  state.style.color="#b91c1c";
+  notice.textContent=
+   "No recent readings. Check device Wi-Fi, MQTT and simulation.";
+ }else if(!lastMessage){
+  state.textContent="WAITING FOR DATA";
+ }
+},2000);
+</script>
+</body>
+</html>
